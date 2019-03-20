@@ -1,6 +1,8 @@
 # homebridge-jlr-incontrol
 
-Jaguar Land Rover InControl plug in for Homebridge
+Jaguar Land Rover InControl plug in for Homebridge.
+
+> Based on [https://github.com/nfarina/homebridge-tesla](homebridge-tesla).
 
 Example config.json:
 
@@ -18,9 +20,9 @@ Example config.json:
 
 Exposes:
 
-* Door Lock service;
-* Vehicle pre-conditioning on/off switch;
-* Charge status _(coming soon)_
+- Door Lock service;
+- Vehicle pre-conditioning on/off switch;
+- Charge status _(coming soon)_
 
 If you use the example above, you would gain Siri commands like:
 
