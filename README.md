@@ -13,10 +13,13 @@ Example config.json:
           "name": "I-PACE",
           "vin": "1AAAAA111AA111111",
           "username": "foo@bar.uk",
-          "password": "foobar"
+          "password": "foobar",
+          "deviceId": "UUID"
         }
       ]
     }
+
+`deviceId` needs to be a unique device identifier to identify your Homebridge.
 
 Exposes:
 
@@ -42,14 +45,16 @@ distinguished by their unique VIN numbers:
           "name": "I-PACE",
           "vin": "1AAAAA111AA111111",
           "username": "foo@bar.uk",
-          "password": "foobar"
+          "password": "foobar",
+          "deviceId": "951208e8-a75d-4009-9faf-0039f728f82e"
         },
         {
           "accessory": "InControl",
           "name": "Range Rover",
           "vin": "2BBBBB222BB22222",
           "username": "foo@bar.uk",
-          "password": "foobar"
+          "password": "foobar",
+          "deviceId": "69df52b-0c86-49eb-b115-de789fd4400d"
         }
       ]
     }
