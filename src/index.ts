@@ -1,12 +1,11 @@
 require("@babel/polyfill");
 import { ClimateState, Vehicle, VehicleState, VehicleData } from "./util/types";
 import { wait } from "./util/wait";
-import api from "./util/api";
+import incontrol from "./util/incontrol";
 import { lock } from "./util/mutex";
 import callbackify from "./util/callbackify";
 
 const util = require("util");
-const tesla = require("teslajs");
 
 let Service: any, Characteristic: any;
 
@@ -14,42 +13,47 @@ export default function(homebridge: any) {
   Service = homebridge.hap.Service;
   Characteristic = homebridge.hap.Characteristic;
 
-  homebridge.registerAccessory("homebridge-tesla", "Tesla", TeslaAccessory);
+  homebridge.registerAccessory(
+    "homebridge-jlr-incontrol",
+    "Jaguar Land Rover",
+    JaguarLandRoverAccessory,
+  );
 }
 
-class TeslaAccessory {
+type Authentication = {
+  accessToken: string;
+  authorizationToken: string;
+  expiresIn: number;
+  refreshToken: string;
+  tokenType: string;
+};
+
+class JaguarLandRoverAccessory {
   // From config.
   log: Function;
   name: string;
-  trunk: string | null;
-  frunk: string | null;
-  chargePort: string | null;
   vin: string;
   username: string;
   password: string;
+  deviceId: string;
   waitMinutes: number;
 
   // Runtime state.
-  authToken: string | undefined;
+  auth: Authentication | undefined;
   vehicleID: string | undefined;
 
   // Services exposed.
   lockService: any;
-  trunkService: any;
-  frunkService: any;
-  chargePortService: any;
-  climateService: any;
+  preconditioningService: any;
 
-  constructor(log, config) {
+  constructor(log: any, config: any) {
     this.log = log;
     this.name = config["name"];
-    this.trunk = config["trunk"];
-    this.frunk = config["frunk"];
-    this.chargePort = config["chargePort"];
     this.vin = config["vin"];
     this.username = config["username"];
     this.password = config["password"];
     this.waitMinutes = config["waitMinutes"] || 1; // default to one minute.
+    this.deviceId = config["deviceId"];
 
     const lockService = new Service.LockMechanism(this.name, "vehicle");
 
@@ -64,85 +68,19 @@ class TeslaAccessory {
 
     this.lockService = lockService;
 
-    const climateService = new Service.Switch(this.name);
+    const preconditioningService = new Service.Switch(this.name);
 
-    climateService
+    preconditioningService
       .getCharacteristic(Characteristic.On)
       .on("get", callbackify(this.getClimateOn))
       .on("set", callbackify(this.setClimateOn));
 
-    this.climateService = climateService;
-
-    if (this.trunk) {
-      // Enable the rear trunk lock service if requested. Use the name given
-      // in your config.
-      const trunkService = new Service.LockMechanism(this.trunk, "trunk");
-
-      trunkService
-        .getCharacteristic(Characteristic.LockCurrentState)
-        .on("get", callbackify(this.getTrunkCurrentState));
-
-      trunkService
-        .getCharacteristic(Characteristic.LockTargetState)
-        .on("get", callbackify(this.getTrunkTargetState))
-        .on("set", callbackify(this.setTrunkTargetState));
-
-      this.trunkService = trunkService;
-    }
-
-    if (this.frunk) {
-      // Enable the front trunk lock service if requested. Use the name given
-      // in your config.
-      const frunkService = new Service.LockMechanism(this.frunk, "frunk");
-
-      frunkService
-        .getCharacteristic(Characteristic.LockCurrentState)
-        .on("get", callbackify(this.getFrunkCurrentState));
-
-      frunkService
-        .getCharacteristic(Characteristic.LockTargetState)
-        .on("get", callbackify(this.getFrunkTargetState))
-        .on("set", callbackify(this.setFrunkTargetState));
-
-      this.frunkService = frunkService;
-    }
-
-    if (this.chargePort) {
-      // Enable the charge port trunk lock service if requested. Use the name given
-      // in your config.
-      const chargePortService = new Service.LockMechanism(
-        this.chargePort,
-        "chargePort",
-      );
-
-      chargePortService
-        .getCharacteristic(Characteristic.LockCurrentState)
-        .on("get", callbackify(this.getChargePortCurrentState));
-
-      chargePortService
-        .getCharacteristic(Characteristic.LockTargetState)
-        .on("get", callbackify(this.getChargePortTargetState))
-        .on("set", callbackify(this.setChargePortTargetState));
-
-      this.chargePortService = chargePortService;
-    }
+    this.preconditioningService = preconditioningService;
   }
 
   getServices() {
-    const {
-      lockService,
-      climateService,
-      trunkService,
-      frunkService,
-      chargePortService,
-    } = this;
-    return [
-      lockService,
-      climateService,
-      ...(trunkService ? [trunkService] : []),
-      ...(frunkService ? [frunkService] : []),
-      ...(chargePortService ? [chargePortService] : []),
-    ];
+    const { lockService, preconditioningService } = this;
+    return [lockService, preconditioningService];
   }
 
   //
@@ -154,7 +92,7 @@ class TeslaAccessory {
 
     // This will only succeed if the car is already online. We don't want to
     // wake it up just to see if climate is on because that could drain battery!
-    const state: VehicleState = await api("vehicleState", options);
+    const state: VehicleState = await incontrol("vehicleState", options);
 
     return state.locked
       ? Characteristic.LockCurrentState.SECURED
@@ -166,7 +104,7 @@ class TeslaAccessory {
 
     // This will only succeed if the car is already online. We don't want to
     // wake it up just to see if climate is on because that could drain battery!
-    const state: VehicleState = await api("vehicleState", options);
+    const state: VehicleState = await incontrol("vehicleState", options);
 
     return state.locked
       ? Characteristic.LockTargetState.SECURED
@@ -182,9 +120,9 @@ class TeslaAccessory {
     this.log("Set lock state to", state);
 
     if (state === Characteristic.LockTargetState.SECURED) {
-      await api("doorLock", options);
+      await incontrol("doorLock", options);
     } else {
-      await api("doorUnlock", options);
+      await incontrol("doorUnlock", options);
     }
 
     // We succeeded, so update the "current" state as well.
@@ -215,7 +153,7 @@ class TeslaAccessory {
 
     // This will only succeed if the car is already online. We don't want to
     // wake it up just to see if climate is on because that could drain battery!
-    const state: ClimateState = await api("climateState", options);
+    const state: ClimateState = await incontrol("climateState", options);
 
     const on = state.is_auto_conditioning_on;
 
@@ -232,187 +170,9 @@ class TeslaAccessory {
     this.log("Set climate to", on);
 
     if (on) {
-      await api("climateStart", options);
+      await incontrol("climateStart", options);
     } else {
-      await api("climateStop", options);
-    }
-  };
-
-  //
-  // Rear Trunk
-  //
-
-  getTrunkCurrentState = async () => {
-    const options = await this.getOptions();
-
-    // This will only succeed if the car is already online. We don't want to
-    // wake it up just to see if climate is on because that could drain battery!
-    const state: VehicleState = await api("vehicleState", options);
-
-    return state.rt
-      ? Characteristic.LockCurrentState.UNSECURED
-      : Characteristic.LockCurrentState.SECURED;
-  };
-
-  getTrunkTargetState = async () => {
-    const options = await this.getOptions();
-
-    // This will only succeed if the car is already online. We don't want to
-    // wake it up just to see if climate is on because that could drain battery!
-    const state: VehicleState = await api("vehicleState", options);
-
-    return state.rt
-      ? Characteristic.LockTargetState.UNSECURED
-      : Characteristic.LockTargetState.SECURED;
-  };
-
-  setTrunkTargetState = async state => {
-    const options = await this.getOptions();
-
-    // Wake up, this is important!
-    await this.wakeUp();
-
-    this.log("Set trunk state to", state);
-
-    // Now technically we are just "actuating" the state here; if you asked
-    // to open the trunk, we will just "actuate" it. On the Model 3, that means
-    // pop it no matter what you say - if you say "Close" it'll do nothing.
-    // On the Model S/X with power liftgates, if you say "Open" or "Close"
-    // it will do the same thing: "actuate" which means to just toggle it.
-    await api("openTrunk", options, tesla.TRUNK);
-
-    // We succeeded, so update the "current" state as well.
-    // We need to update the current state "later" because Siri can't
-    // handle receiving the change event inside the same "set target state"
-    // response.
-    await wait(1);
-
-    if (state == Characteristic.LockTargetState.SECURED) {
-      this.trunkService.setCharacteristic(
-        Characteristic.LockCurrentState,
-        Characteristic.LockCurrentState.SECURED,
-      );
-    } else {
-      this.trunkService.setCharacteristic(
-        Characteristic.LockCurrentState,
-        Characteristic.LockCurrentState.UNSECURED,
-      );
-    }
-  };
-
-  //
-  // Front Trunk
-  //
-
-  getFrunkCurrentState = async () => {
-    const options = await this.getOptions();
-
-    // This will only succeed if the car is already online. We don't want to
-    // wake it up just to see if climate is on because that could drain battery!
-    const state: VehicleState = await api("vehicleState", options);
-
-    return state.ft
-      ? Characteristic.LockCurrentState.UNSECURED
-      : Characteristic.LockCurrentState.SECURED;
-  };
-
-  getFrunkTargetState = async () => {
-    const options = await this.getOptions();
-
-    // This will only succeed if the car is already online. We don't want to
-    // wake it up just to see if climate is on because that could drain battery!
-    const state: VehicleState = await api("vehicleState", options);
-
-    return state.ft
-      ? Characteristic.LockTargetState.UNSECURED
-      : Characteristic.LockTargetState.SECURED;
-  };
-
-  setFrunkTargetState = async state => {
-    const options = await this.getOptions();
-
-    // Wake up, this is important!
-    await this.wakeUp();
-
-    this.log("Set frunk state to", state);
-
-    if (state === Characteristic.LockTargetState.SECURED) {
-      throw new Error("Cannot close an open frunk.");
-    } else {
-      await api("openTrunk", options, tesla.FRUNK);
-    }
-
-    // We succeeded, so update the "current" state as well.
-    // We need to update the current state "later" because Siri can't
-    // handle receiving the change event inside the same "set target state"
-    // response.
-    await wait(1);
-
-    const { frunkService } = this;
-
-    frunkService &&
-      frunkService.setCharacteristic(
-        Characteristic.LockCurrentState,
-        Characteristic.LockCurrentState.UNSECURED,
-      );
-  };
-
-  // Charge Port
-
-  getChargePortCurrentState = async () => {
-    const options = await this.getOptions();
-
-    // This will only succeed if the car is already online. We don't want to
-    // wake it up just to see if climate is on because that could drain battery!
-    const state: VehicleData = await api("vehicleData", options);
-
-    return state.charge_state.charge_port_door_open
-      ? Characteristic.LockCurrentState.UNSECURED
-      : Characteristic.LockCurrentState.SECURED;
-  };
-
-  getChargePortTargetState = async () => {
-    const options = await this.getOptions();
-
-    // This will only succeed if the car is already online. We don't want to
-    // wake it up just to see if climate is on because that could drain battery!
-    const state: VehicleData = await api("vehicleData", options);
-
-    return state.charge_state.charge_port_door_open
-      ? Characteristic.LockTargetState.UNSECURED
-      : Characteristic.LockTargetState.SECURED;
-  };
-
-  setChargePortTargetState = async state => {
-    const options = await this.getOptions();
-
-    // Wake up, this is important!
-    await this.wakeUp();
-
-    this.log("Set charge port state to", state);
-
-    if (state === Characteristic.LockTargetState.SECURED) {
-      await api("closeChargePort", options);
-    } else {
-      await api("openChargePort", options);
-    }
-
-    // We succeeded, so update the "current" state as well.
-    // We need to update the current state "later" because Siri can't
-    // handle receiving the change event inside the same "set target state"
-    // response.
-    await wait(1);
-
-    if (state == Characteristic.LockTargetState.SECURED) {
-      this.chargePortService.setCharacteristic(
-        Characteristic.LockCurrentState,
-        Characteristic.LockCurrentState.SECURED,
-      );
-    } else {
-      this.chargePortService.setCharacteristic(
-        Characteristic.LockCurrentState,
-        Characteristic.LockCurrentState.UNSECURED,
-      );
+      await incontrol("climateStop", options);
     }
   };
 
@@ -438,20 +198,54 @@ class TeslaAccessory {
   };
 
   getAuthToken = async (): Promise<string> => {
-    const { username, password, authToken } = this;
+    const { username, password, auth, deviceId } = this;
 
     // Return cached value if we have one.
-    if (authToken) return authToken;
+    if (auth) return auth.accessToken;
 
-    this.log("Logging into Tesla with username/password…");
-    const result = await api("login", username, password);
-    const token = result.authToken;
+    this.log("Logging into InControl with username/password…");
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: "Basic YXM6YXNwYXNz ",
+      "X-Device-Id": deviceId,
+      Connection: "close",
+    };
+    const body = {
+      grant_type: "password",
+      password: password,
+      username: username,
+    };
+
+    const result = await incontrol(
+      "POST",
+      "https://jlp-ifas.wirelesscar.net/ifas/jlr/tokens",
+      headers,
+      body,
+    );
+    const {
+      access_token,
+      authorization_token,
+      refresh_token,
+      expires_in,
+      token_type,
+    } = result;
 
     // Save it in memory for future API calls.
     this.log("Got a login token.");
-    this.authToken = token;
-    return token;
+    this.auth = {
+      accessToken: access_token,
+      authorizationToken: authorization_token,
+      refreshToken: refresh_token,
+      expiresIn: expires_in,
+      tokenType: token_type,
+    };
+
+    return access_token;
   };
+
+  registerDevice = async (): Promise<string> => {};
+
+  login = async (): Promise<string> => {};
 
   getVehicle = async () => {
     const { vin } = this;
@@ -459,7 +253,7 @@ class TeslaAccessory {
     // Only way to do this is to get ALL vehicles then filter out the one
     // we want.
     const authToken = await this.getAuthToken();
-    const vehicles: Vehicle[] = await api("allVehicles", { authToken });
+    const vehicles: Vehicle[] = await incontrol("allVehicles", { authToken });
 
     // Now figure out which vehicle matches your VIN.
     // `vehicles` is something like:
@@ -488,14 +282,14 @@ class TeslaAccessory {
     const options = await this.getOptions();
 
     // Send the command.
-    await api("wakeUp", options);
+    await incontrol("wakeUp", options);
 
     // Wait up to 30 seconds for the car to wake up.
     const start = Date.now();
     let waitTime = 1000;
 
     while (Date.now() - start < this.waitMinutes * 60 * 1000) {
-      // Poll Tesla for the latest on this vehicle.
+      // Poll InControl for the latest on this vehicle.
       const { state } = await this.getVehicle();
 
       if (state === "online") {
