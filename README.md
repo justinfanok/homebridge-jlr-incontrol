@@ -14,18 +14,21 @@ Example config.json:
           "vin": "1AAAAA111AA111111",
           "username": "foo@bar.uk",
           "password": "foobar",
-          "deviceId": "UUID"
+          "deviceId": "UUID",
+          "lowBatteryThreshold": 25
         }
       ]
     }
 
-`deviceId` needs to be a unique device identifier to identify your Homebridge.
+- `deviceId` needs to be a unique device identifier to identify your Homebridge.
+- `lowBatteryThresold` defines the battery level below which the battery is considered to be low.
+  Defaults to 25% if the value is not specified.
 
 Exposes:
 
-- Door Lock service;
-- Vehicle pre-conditioning on/off switch;
-- Charge status _(coming soon)_
+- Battery service;
+- Door Lock service _(coming soon)_;
+- Vehicle pre-conditioning on/off switch _(coming soon)_;
 
 If you use the example above, you would gain Siri commands like:
 
