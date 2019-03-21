@@ -26,9 +26,11 @@ type Authentication = {
   expiresIn: number;
   refreshToken: string;
   tokenType: string;
+  isDeviceRegistered: boolean;
+  isLoggedIn: boolean;
 };
 
-class JaguarLandRoverAccessory {
+export class JaguarLandRoverAccessory {
   // From config.
   log: Function;
   name: string;
@@ -186,7 +188,7 @@ class JaguarLandRoverAccessory {
 
     try {
       // First login if we don't have a token.
-      const authToken = await this.getAuthToken();
+      const authToken = await this.authenticate();
 
       // Grab the string ID of your vehicle.
       const { id_s: vehicleID } = await this.getVehicle();
@@ -197,20 +199,31 @@ class JaguarLandRoverAccessory {
     }
   };
 
-  getAuthToken = async (): Promise<string> => {
+  getSession = async (): Promise<Authentication> => {
+    if (this.auth) return this.auth;
+
+    this.auth = await this.authenticate();
+    this.auth.isDeviceRegistered = await this.registerDevice();
+    this.auth.isLoggedIn = await this.login();
+
+    return this.auth;
+  };
+
+  private authenticate = async (): Promise<Authentication> => {
     const { username, password, auth, deviceId } = this;
 
     // Return cached value if we have one.
-    if (auth) return auth.accessToken;
+    if (auth) return auth;
 
-    this.log("Logging into InControl with username/password…");
+    this.log("Authenticating with InControl API using credentials");
+
     const headers = {
       "Content-Type": "application/json",
       Authorization: "Basic YXM6YXNwYXNz ",
       "X-Device-Id": deviceId,
       Connection: "close",
     };
-    const body = {
+    const json = {
       grant_type: "password",
       password: password,
       username: username,
@@ -220,7 +233,7 @@ class JaguarLandRoverAccessory {
       "POST",
       "https://jlp-ifas.wirelesscar.net/ifas/jlr/tokens",
       headers,
-      body,
+      json,
     );
     const {
       access_token,
@@ -230,29 +243,87 @@ class JaguarLandRoverAccessory {
       token_type,
     } = result;
 
-    // Save it in memory for future API calls.
     this.log("Got a login token.");
-    this.auth = {
+
+    return {
       accessToken: access_token,
       authorizationToken: authorization_token,
       refreshToken: refresh_token,
       expiresIn: expires_in,
       tokenType: token_type,
+      isDeviceRegistered: false,
+      isLoggedIn: false,
     };
-
-    return access_token;
   };
 
-  registerDevice = async (): Promise<string> => {};
+  private registerDevice = async (): Promise<boolean> => {
+    const { username, auth, deviceId } = this;
 
-  login = async (): Promise<string> => {};
+    // Return cached value if we have one.
+    if (auth && auth.isDeviceRegistered) return auth.isDeviceRegistered;
+
+    this.log("Registering device", deviceId);
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Device-Id": deviceId,
+      Connection: "close",
+    };
+    const json = {
+      access_token: auth.accessToken,
+      authorization_token: auth.authorizationToken,
+      expires_in: auth.expiresIn,
+      deviceID: deviceId,
+    };
+
+    const result = await incontrol(
+      "POST",
+      `https://jlp-ifop.wirelesscar.net/ifop/jlr/users/${username}/clients`,
+      headers,
+      json,
+      true,
+    );
+
+    const isDeviceRegistered = result.statusCode === 204;
+    this.log("Device registration result", isDeviceRegistered);
+
+    return isDeviceRegistered;
+  };
+
+  private login = async (): Promise<boolean> => {
+    const { username, auth, deviceId } = this;
+
+    // Return cached value if we have one.
+    if (auth && auth.isLoggedIn) return auth.isLoggedIn;
+
+    this.log("Logging user in ", username);
+    const headers = {
+      Accept: "application/vnd.wirelesscar.ngtp.if9.User-v3+json",
+      Authorization: `Bearer ${auth.accessToken}`,
+      "Content-Type": "application/json",
+      "X-Device-Id": deviceId,
+      Connection: "close",
+    };
+
+    const result = await incontrol(
+      "GET",
+      `https://jlp-ifoa.wirelesscar.net/if9/jlr/users?loginName=${username}`,
+      headers,
+      undefined,
+      true,
+    );
+
+    const isLoggedIn = result.statusCode === 200;
+    this.log("Log in result", isLoggedIn);
+
+    return isLoggedIn;
+  };
 
   getVehicle = async () => {
     const { vin } = this;
 
     // Only way to do this is to get ALL vehicles then filter out the one
     // we want.
-    const authToken = await this.getAuthToken();
+    const authToken = await this.authenticate();
     const vehicles: Vehicle[] = await incontrol("allVehicles", { authToken });
 
     // Now figure out which vehicle matches your VIN.

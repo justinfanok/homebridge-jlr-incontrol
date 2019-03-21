@@ -7,14 +7,16 @@ export default async function incontrol(
   method: string,
   endpoint: string,
   headers: any,
-  body: any | null,
+  json: any | null,
+  resolveWithFullResponse: boolean = false,
 ): Promise<any> {
   try {
     const request = {
       method: method,
       uri: endpoint,
       headers: headers,
-      body: body,
+      json: json,
+      resolveWithFullResponse: resolveWithFullResponse,
     };
     return await rpn(request);
   } catch (error) {
