@@ -1,7 +1,14 @@
 require("@babel/polyfill");
-import { ClimateState, Vehicle, VehicleState, VehicleData } from "./util/types";
+import {
+  ClimateState,
+  Vehicle,
+  VehicleState,
+  VehicleData,
+  VehicleStatusResponse,
+  VehicleStatus,
+} from "./util/types";
 import { wait } from "./util/wait";
-import incontrol from "./util/incontrol";
+import { incontrol, getVehicleInformation } from "./util/incontrol";
 import { lock } from "./util/mutex";
 import callbackify from "./util/callbackify";
 
@@ -39,12 +46,14 @@ export class JaguarLandRoverAccessory {
   password: string;
   deviceId: string;
   waitMinutes: number;
+  lowBatteryThreshold: number;
 
   // Runtime state.
   auth: Authentication | undefined;
   vehicleID: string | undefined;
 
   // Services exposed.
+  batteryService: any;
   lockService: any;
   preconditioningService: any;
 
@@ -55,35 +64,71 @@ export class JaguarLandRoverAccessory {
     this.username = config["username"];
     this.password = config["password"];
     this.waitMinutes = config["waitMinutes"] || 1; // default to one minute.
+    this.lowBatteryThreshold = config["lowBatteryThreshold"] || 25;
     this.deviceId = config["deviceId"];
 
-    const lockService = new Service.LockMechanism(this.name, "vehicle");
+    const batteryService = new Service.BatteryService(this.name, "vehicle");
+    batteryService
+      .getCharacteristic(Characteristic.BatteryLevel)
+      .on("get", callbackify(this.getBatteryLevel));
+    batteryService
+      .getCharacteristic(Characteristic.ChargingState)
+      .on("get", callbackify(this.getChargingState));
+    batteryService
+      .getCharacteristic(Characteristic.StatusLowBattery)
+      .on("get", callbackify(this.getStatusLowBattery));
 
-    lockService
-      .getCharacteristic(Characteristic.LockCurrentState)
-      .on("get", callbackify(this.getLockCurrentState));
+    // const lockService = new Service.LockMechanism(this.name, "vehicle");
 
-    lockService
-      .getCharacteristic(Characteristic.LockTargetState)
-      .on("get", callbackify(this.getLockTargetState))
-      .on("set", callbackify(this.setLockTargetState));
+    // lockService
+    //   .getCharacteristic(Characteristic.LockCurrentState)
+    //   .on("get", callbackify(this.getLockCurrentState));
 
-    this.lockService = lockService;
+    // lockService
+    //   .getCharacteristic(Characteristic.LockTargetState)
+    //   .on("get", callbackify(this.getLockTargetState))
+    //   .on("set", callbackify(this.setLockTargetState));
 
-    const preconditioningService = new Service.Switch(this.name);
+    // this.lockService = lockService;
 
-    preconditioningService
-      .getCharacteristic(Characteristic.On)
-      .on("get", callbackify(this.getClimateOn))
-      .on("set", callbackify(this.setClimateOn));
+    // const preconditioningService = new Service.Switch(this.name);
 
-    this.preconditioningService = preconditioningService;
+    // preconditioningService
+    //   .getCharacteristic(Characteristic.On)
+    //   .on("get", callbackify(this.getClimateOn))
+    //   .on("set", callbackify(this.setClimateOn));
+
+    // this.preconditioningService = preconditioningService;
   }
 
   getServices() {
-    const { lockService, preconditioningService } = this;
-    return [lockService, preconditioningService];
+    const { batteryService } = this;
+    return [batteryService];
   }
+
+  // Battery
+
+  getBatteryLevel = async (): Promise<number> => {
+    const vehicleStatus = await this.getVehicleStatus();
+    const chargeLevel = vehicleStatus.EV_STATE_OF_CHARGE;
+
+    return chargeLevel;
+  };
+
+  getChargingState = async (): Promise<any> => {
+    const vehicleStatus = await this.getVehicleStatus();
+    const chargingStatus = vehicleStatus.EV_CHARGING_STATUS;
+
+    return chargingStatus === "CHARGING"
+      ? Characteristic.ChargingState.NOT_CHARGING
+      : Characteristic.ChargingState.CHARGING;
+  };
+
+  getStatusLowBattery = async (): Promise<any> => {
+    const batteryLevel = await this.getBatteryLevel();
+
+    return batteryLevel < this.lowBatteryThreshold;
+  };
 
   //
   // Vehicle Lock
@@ -182,24 +227,7 @@ export class JaguarLandRoverAccessory {
   // General
   //
 
-  getOptions = async (): Promise<{ authToken: string; vehicleID: string }> => {
-    // Use a mutex to prevent multiple logins happening in parallel.
-    const unlock = await lock("getOptions", 20000);
-
-    try {
-      // First login if we don't have a token.
-      const authToken = await this.authenticate();
-
-      // Grab the string ID of your vehicle.
-      const { id_s: vehicleID } = await this.getVehicle();
-
-      return { authToken, vehicleID };
-    } finally {
-      unlock();
-    }
-  };
-
-  getSession = async (): Promise<Authentication> => {
+  private getSession = async (): Promise<Authentication> => {
     if (this.auth) return this.auth;
 
     this.auth = await this.authenticate();
@@ -243,7 +271,7 @@ export class JaguarLandRoverAccessory {
       token_type,
     } = result;
 
-    this.log("Got a login token.");
+    this.log("Got an authentication token.");
 
     return {
       accessToken: access_token,
@@ -318,65 +346,37 @@ export class JaguarLandRoverAccessory {
     return isLoggedIn;
   };
 
-  getVehicle = async () => {
-    const { vin } = this;
+  getVehicleAttributes = async () => {
+    const { vin, deviceId } = this;
+    const auth = await this.getSession();
 
-    // Only way to do this is to get ALL vehicles then filter out the one
-    // we want.
-    const authToken = await this.authenticate();
-    const vehicles: Vehicle[] = await incontrol("allVehicles", { authToken });
+    this.log("Getting vehicle status", vin);
 
-    // Now figure out which vehicle matches your VIN.
-    // `vehicles` is something like:
-    // [ { id_s: '18488650400306554', vin: '5YJ3E1EA8JF006024', state: 'asleep', ... }, ... ]
-    const vehicle = vehicles.find(v => v.vin === vin);
-
-    if (!vehicle) {
-      this.log(
-        "No vehicles were found matching the VIN ${vin} entered in your config.json. Available vehicles:",
-      );
-      for (const vehicle of vehicles) {
-        this.log("${vehicle.vin} [${vehicle.display_name}]");
-      }
-
-      throw new Error(`Couldn't find vehicle with VIN ${vin}.`);
-    }
-
-    this.log(
-      `Using vehicle "${vehicle.display_name}" with state "${vehicle.state}"`,
+    return await getVehicleInformation(
+      "attributes",
+      vin,
+      auth.accessToken,
+      deviceId,
     );
-
-    return vehicle;
   };
 
-  wakeUp = async () => {
-    const options = await this.getOptions();
+  getVehicleStatus = async (): Promise<VehicleStatus> => {
+    const { vin, deviceId } = this;
+    const auth = await this.getSession();
 
-    // Send the command.
-    await incontrol("wakeUp", options);
+    this.log("Getting vehicle status", vin);
 
-    // Wait up to 30 seconds for the car to wake up.
-    const start = Date.now();
-    let waitTime = 1000;
-
-    while (Date.now() - start < this.waitMinutes * 60 * 1000) {
-      // Poll InControl for the latest on this vehicle.
-      const { state } = await this.getVehicle();
-
-      if (state === "online") {
-        // Success!
-        return;
-      }
-
-      this.log("Waiting for vehicle to wake up…");
-      await wait(waitTime);
-
-      // Use exponential backoff with a max wait of 5 seconds.
-      waitTime = Math.min(waitTime * 2, 5000);
-    }
-
-    throw new Error(
-      `Vehicle did not wake up within ${this.waitMinutes} minutes.`,
+    const response: VehicleStatusResponse = await getVehicleInformation(
+      "status",
+      vin,
+      auth.accessToken,
+      deviceId,
     );
+
+    var vehicleStatus: VehicleStatus = {};
+
+    response.vehicleStatus.map(kvp => (vehicleStatus[kvp.key] = kvp.value));
+
+    return vehicleStatus;
   };
 }
