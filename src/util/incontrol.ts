@@ -199,14 +199,14 @@ export class InControlService {
     return isLoggedIn;
   };
 
-  private getVehicleInformation = async (
-    name: string,
-    vin: string,
-    accessToken: string,
-    deviceId: string,
-  ): Promise<any> => {
+  private getVehicleInformation = async (name: string): Promise<any> => {
+    const { vin, deviceId } = this;
+    const auth = await this.getSession();
+
+    this.log("Getting vehicle", name, vin);
+
     const headers = {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${auth.accessToken}`,
       Accept: InControlService.vehicleInformationAccepts[name],
       "Content-Type": "application/json",
       "X-Device-Id": deviceId,
@@ -220,30 +220,12 @@ export class InControlService {
   };
 
   getVehicleAttributes = async () => {
-    const { vin, deviceId } = this;
-    const auth = await this.getSession();
-
-    this.log("Getting vehicle status", vin);
-
-    return await this.getVehicleInformation(
-      "attributes",
-      vin,
-      auth.accessToken,
-      deviceId,
-    );
+    return await this.getVehicleInformation("attributes");
   };
 
   getVehicleStatus = async (): Promise<VehicleStatus> => {
-    const { vin, deviceId } = this;
-    const auth = await this.getSession();
-
-    this.log("Getting vehicle status", vin);
-
     const response: VehicleStatusResponse = await this.getVehicleInformation(
       "status",
-      vin,
-      auth.accessToken,
-      deviceId,
     );
 
     var vehicleStatus: VehicleStatus = {};
@@ -253,11 +235,7 @@ export class InControlService {
     return vehicleStatus;
   };
 
-  lockVehicle = async (): Promise<any> => {
-    
-  }
+  lockVehicle = async (): Promise<any> => {};
 
-  unlockVehicle = async (): Promise<any> =>{
-
-  }
+  unlockVehicle = async (): Promise<any> => {};
 }
