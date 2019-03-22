@@ -4,7 +4,14 @@
   "description": "Jaguar Land Roger InControl support for Homebridge: https://github.com/nfarina/homebridge",
   "license": "ISC",
   "keywords": [
-    "homebridge-plugin"
+    "homebridge-plugin",
+    "jaguar",
+    "land rover",
+    "incontrol",
+    "i-pace",
+    "i pace",
+    "ipace",
+    "homebridge"
   ],
   "repository": {
     "type": "git",
