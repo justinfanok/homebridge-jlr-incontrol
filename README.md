@@ -9,7 +9,7 @@ Example config.json:
     {
       "accessories": [
         {
-          "accessory": "InControl",
+          "accessory": "Jaguar Land Rover InControl",
           "name": "I-PACE",
           "vin": "1AAAAA111AA111111",
           "username": "foo@bar.uk",
@@ -48,7 +48,7 @@ distinguished by their unique VIN numbers:
     {
       "accessories": [
         {
-          "accessory": "InControl",
+          "accessory": "Jaguar Land Rover InControl",
           "name": "I-PACE",
           "vin": "1AAAAA111AA111111",
           "username": "foo@bar.uk",
@@ -57,7 +57,7 @@ distinguished by their unique VIN numbers:
           "deviceId": "951208e8-a75d-4009-9faf-0039f728f82e"
         },
         {
-          "accessory": "InControl",
+          "accessory": "Jaguar Land Rover InControl",
           "name": "Range Rover",
           "vin": "2BBBBB222BB22222",
           "username": "foo@bar.uk",
