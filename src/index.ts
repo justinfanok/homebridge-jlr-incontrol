@@ -131,9 +131,9 @@ export class JaguarLandRoverAccessory {
     this.log("Set lock state to", state);
 
     if (state === Characteristic.LockTargetState.SECURED) {
-      //await incontrol("doorLock", options);
+      await this.incontrol.lockVehicle();
     } else {
-      //await incontrol("doorUnlock", options);
+      await this.incontrol.unlockVehicle();
     }
 
     // We succeeded, so update the "current" state as well.

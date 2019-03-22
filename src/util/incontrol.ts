@@ -252,4 +252,12 @@ export class InControlService {
 
     return vehicleStatus;
   };
+
+  lockVehicle = async (): Promise<any> => {
+    
+  }
+
+  unlockVehicle = async (): Promise<any> =>{
+
+  }
 }
