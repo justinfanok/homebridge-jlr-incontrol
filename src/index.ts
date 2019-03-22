@@ -16,7 +16,7 @@ export default function(homebridge: any) {
   );
 }
 
-export class JaguarLandRoverAccessory {
+class JaguarLandRoverAccessory {
   // From config.
   log: Function;
   name: string;

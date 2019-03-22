@@ -1,5 +1,6 @@
 import { VehicleStatusResponse, VehicleStatus } from "./types";
 import { lock } from "./mutex";
+import { getServers } from "dns";
 
 const rpn = require("request-promise-native");
 
@@ -10,7 +11,12 @@ type Authentication = {
   refreshToken: string;
   tokenType: string;
   isDeviceRegistered: boolean;
-  isLoggedIn: boolean;
+  userId: string;
+};
+
+type LockUnlockOperation = {
+  name: string;
+  tokenType: string;
 };
 
 export class InControlService {
@@ -21,6 +27,15 @@ export class InControlService {
   private vin: string;
   private pin: string;
   private auth: Authentication | undefined;
+  private UnlockVehicleOperation: LockUnlockOperation = {
+    name: "unlock",
+    tokenType: "RDU",
+  };
+
+  private LockVehicleOperation: LockUnlockOperation = {
+    name: "lock",
+    tokenType: "RDL",
+  };
 
   private static readonly vehicleInformationAccepts = {
     status: "application/vnd.ngtp.org.if9.healthstatus-v2+json",
@@ -82,7 +97,7 @@ export class InControlService {
 
       this.auth = await this.authenticate();
       this.auth.isDeviceRegistered = await this.registerDevice();
-      this.auth.isLoggedIn = await this.login();
+      this.auth.userId = await this.getUserId();
 
       return this.auth;
     } finally {
@@ -133,7 +148,7 @@ export class InControlService {
       expiresIn: expires_in,
       tokenType: token_type,
       isDeviceRegistered: false,
-      isLoggedIn: false,
+      userId: "",
     };
   };
 
@@ -170,13 +185,13 @@ export class InControlService {
     return isDeviceRegistered;
   };
 
-  private login = async (): Promise<boolean> => {
+  private getUserId = async (): Promise<string> => {
     const { username, auth, deviceId } = this;
 
     // Return cached value if we have one.
-    if (auth && auth.isLoggedIn) return auth.isLoggedIn;
+    if (auth && auth.userId) return auth.userId;
 
-    this.log("Logging user in ", username);
+    this.log("Getting user id", username);
     const headers = {
       Accept: "application/vnd.wirelesscar.ngtp.if9.User-v3+json",
       Authorization: `Bearer ${auth.accessToken}`,
@@ -189,14 +204,67 @@ export class InControlService {
       "GET",
       `https://jlp-ifoa.wirelesscar.net/if9/jlr/users?loginName=${username}`,
       headers,
-      undefined,
-      true,
     );
 
-    const isLoggedIn = result.statusCode === 200;
-    this.log("Log in result", isLoggedIn);
+    const userId = result.userId;
+    this.log("Log in user id", userId);
 
-    return isLoggedIn;
+    return userId;
+  };
+
+  private getLockUnlockToken = async (tokenType: string): Promise<string> => {
+    const { vin, pin, deviceId } = this;
+    const auth = await this.getSession();
+
+    this.log("Getting lock/unlock token", tokenType);
+
+    const headers = {
+      "Content-Type":
+        "application/vnd.wirelesscar.ngtp.if9.AuthenticateRequest-v2+json; charset=utf-8",
+      Authorization: `Bearer ${auth.accessToken}`,
+      "X-Device-Id": deviceId,
+    };
+    const json = {
+      serviceName: tokenType,
+      pin: pin,
+    };
+
+    var response = await this.sendRequest(
+      "POST",
+      `https://jlp-ifoa.wirelesscar.net/if9/jlr/vehicles/${vin}/users/${
+        auth.userId
+      }/authenticate`,
+      headers,
+      json,
+    );
+
+    return response.token;
+  };
+
+  private lockUnlockVehicle = async (
+    operation: LockUnlockOperation,
+  ): Promise<any> => {
+    const token = await this.getLockUnlockToken(operation.tokenType);
+    const { vin, deviceId, auth } = this;
+
+    const headers = {
+      Accept: "*/*",
+      Authorization: `Bearer ${auth.accessToken}`,
+      "Content-Type":
+        "application/vnd.wirelesscar.ngtp.if9.StartServiceConfiguration-v2+json",
+      "X-Device-Id": deviceId,
+    };
+
+    const json = { token: token };
+
+    await this.sendRequest(
+      "POST",
+      `https://jlp-ifoa.wirelesscar.net/if9/jlr/vehicles/${vin}/${
+        operation.name
+      }`,
+      headers,
+      json,
+    );
   };
 
   private getVehicleInformation = async (name: string): Promise<any> => {
@@ -235,7 +303,11 @@ export class InControlService {
     return vehicleStatus;
   };
 
-  lockVehicle = async (): Promise<any> => {};
+  lockVehicle = async (): Promise<any> => {
+    return this.lockUnlockVehicle(this.LockVehicleOperation);
+  };
 
-  unlockVehicle = async (): Promise<any> => {};
+  unlockVehicle = async (): Promise<any> => {
+    return this.lockUnlockVehicle(this.UnlockVehicleOperation);
+  };
 }
