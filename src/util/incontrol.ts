@@ -310,4 +310,8 @@ export class InControlService {
   unlockVehicle = async (): Promise<any> => {
     return this.lockUnlockVehicle(this.UnlockVehicleOperation);
   };
+
+  startPreconditioning = async (targetTemperature: number) => {};
+
+  stopPreconditioning = async () => {};
 }
