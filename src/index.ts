@@ -17,6 +17,8 @@ export default function(homebridge: any) {
 }
 
 class JaguarLandRoverAccessory {
+  private minimumTemperature = 15.5;
+  private maximumTemperature = 28.5;
   // From config.
   log: Function;
   name: string;
@@ -179,15 +181,15 @@ class JaguarLandRoverAccessory {
   //
 
   getCurrentHeatingCoolingState = async () => {
-    //const vehicleStatus = await this.incontrol.getVehicleStatus();
-    const climateStatus = "ON"; //vehicleStatus.CLIMATE_STATUS_OPERATING_STATUS;
+    const vehicleStatus = await this.incontrol.getVehicleStatus();
+    const climateStatus = vehicleStatus.CLIMATE_STATUS_OPERATING_STATUS;
 
     const climateOnState =
       this.targetTemperature < this.coolingThresholdTemperature
         ? Characteristic.CurrentHeatingCoolingState.COOL
         : Characteristic.CurrentHeatingCoolingState.HEAT;
 
-    return climateStatus === "ON"
+    return climateStatus === "HEATING"
       ? climateOnState
       : Characteristic.CurrentHeatingCoolingState.OFF;
   };
@@ -200,9 +202,9 @@ class JaguarLandRoverAccessory {
     this.log("Set heating cooling state to", state);
 
     if (state === Characteristic.CurrentHeatingCoolingState.OFF) {
-      await this.incontrol.startPreconditioning(this.targetTemperature);
-    } else {
       await this.incontrol.stopPreconditioning();
+    } else {
+      await this.incontrol.startPreconditioning(this.targetTemperature);
     }
 
     // We succeeded, so update the "current" state as well.
@@ -223,6 +225,11 @@ class JaguarLandRoverAccessory {
   };
 
   setTargetTemperature = async state => {
+    const { minimumTemperature, maximumTemperature } = this;
+
+    if (state < minimumTemperature) state = minimumTemperature;
+    else if (state > maximumTemperature) state = maximumTemperature;
+
     this.targetTemperature = state;
 
     // if we're currently preconditioning, then send the update to the car
