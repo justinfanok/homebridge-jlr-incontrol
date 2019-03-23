@@ -30,7 +30,7 @@ Exposes:
 
 - Battery service;
 - Door Lock service;
-- Vehicle pre-conditioning on/off switch _(coming soon)_;
+- Vehicle pre-conditioning on/off switch.
 
 If you use the example above, you would gain Siri commands like:
 
@@ -38,7 +38,8 @@ If you use the example above, you would gain Siri commands like:
 - _"Is the I-PACE charging?"_ (is the car charging?)
 - _"Is the I-PACE locked?"_ (check if the car is locked)
 - _"Open the I-PACE"_ (unlock the vehicle)
-- _"Turn on the I-PACE"_ (pre-condition the I-PACE)
+- _"Turn on the I-PACE Preconditioning"_ (pre-condition the I-PACE)
+- _"Set the I-PACE Preconditioning to 18 degrees"_
 
 ## Multiple Vehicles
 
