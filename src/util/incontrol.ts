@@ -1,6 +1,5 @@
 import { VehicleStatusResponse, VehicleStatus } from "./types";
 import { lock } from "./mutex";
-import { getServers } from "dns";
 
 const rpn = require("request-promise-native");
 
@@ -31,12 +30,10 @@ export class InControlService {
     name: "unlock",
     tokenType: "RDU",
   };
-
   private LockVehicleOperation: LockUnlockOperation = {
     name: "lock",
     tokenType: "RDL",
   };
-
   private static readonly vehicleInformationAccepts = {
     status: "application/vnd.ngtp.org.if9.healthstatus-v2+json",
     attributes: "application/vnd.ngtp.org.VehicleAttributes-v3+json",
@@ -212,11 +209,14 @@ export class InControlService {
     return userId;
   };
 
-  private getLockUnlockToken = async (tokenType: string): Promise<string> => {
-    const { vin, pin, deviceId } = this;
+  private getCommandToken = async (
+    tokenType: string,
+    pin: string,
+  ): Promise<string> => {
+    const { vin, deviceId } = this;
     const auth = await this.getSession();
 
-    this.log("Getting lock/unlock token", tokenType);
+    this.log("Getting command token", tokenType);
 
     const headers = {
       "Content-Type":
@@ -244,7 +244,8 @@ export class InControlService {
   private lockUnlockVehicle = async (
     operation: LockUnlockOperation,
   ): Promise<any> => {
-    const token = await this.getLockUnlockToken(operation.tokenType);
+    const { pin } = this;
+    const token = await this.getCommandToken(operation.tokenType, pin);
     const { vin, deviceId, auth } = this;
 
     const headers = {
@@ -265,6 +266,38 @@ export class InControlService {
       headers,
       json,
     );
+  };
+
+  private startStopPreconditioning = async (
+    serviceParameters: any[],
+  ): Promise<any> => {
+    const pin = this.getLastFourOfVin();
+    const token = await this.getCommandToken("ECC", pin);
+    const { vin, deviceId, auth } = this;
+
+    const headers = {
+      Accept: "application/vnd.wirelesscar.ngtp.if9.ServiceStatus-v5+json",
+      Authorization: `Bearer ${auth.accessToken}`,
+      "Content-Type":
+        "application/vnd.wirelesscar.ngtp.if9.PhevService-v1+json; charset=utf",
+      "X-Device-Id": deviceId,
+    };
+
+    const json = { token: token, serviceParameters: serviceParameters };
+
+    this.log("Sending preconditioning command", serviceParameters);
+
+    await this.sendRequest(
+      "POST",
+      `https://jlp-ifoa.wirelesscar.net/if9/jlr/vehicles/${vin}/preconditioning`,
+      headers,
+      json,
+    );
+  };
+
+  getLastFourOfVin = (): string => {
+    const { vin } = this;
+    return vin.slice(vin.length - 4);
   };
 
   private getVehicleInformation = async (name: string): Promise<any> => {
@@ -309,5 +342,20 @@ export class InControlService {
 
   unlockVehicle = async (): Promise<any> => {
     return this.lockUnlockVehicle(this.UnlockVehicleOperation);
+  };
+
+  startPreconditioning = async (targetTemperature: number) => {
+    const serviceParameters: any[] = [
+      { key: "PRECONDITIONING", value: "START" },
+      { key: "TARGET_TEMPERATURE_CELSIUS", value: targetTemperature * 10 },
+    ];
+    return this.startStopPreconditioning(serviceParameters);
+  };
+
+  stopPreconditioning = async () => {
+    const serviceParameters: any[] = [
+      { key: "PRECONDITIONING", value: "STOP" },
+    ];
+    return this.startStopPreconditioning(serviceParameters);
   };
 }

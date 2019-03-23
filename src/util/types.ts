@@ -50,7 +50,7 @@ export interface VehicleStatus {
   EV_BATTERY_PRECONDITIONING_STATUS: string;
   EV_CHARGE_NOW_SETTING: string;
   EV_CHARGE_TYPE: string;
-  EV_CHARGING_METHOD: string;
+  EV_CHARGING_METHOD: string; // WIRED = plugged in
   EV_CHARGING_MODE_CHOICE: string;
   EV_CHARGING_RATE_KM_PER_HOUR: number;
   EV_CHARGING_RATE_MILES_PER_HOUR: number;

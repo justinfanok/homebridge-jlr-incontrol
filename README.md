@@ -1,8 +1,6 @@
 # homebridge-jlr-incontrol
 
-Jaguar Land Rover InControl plug in for Homebridge.
-
-> Based on [https://github.com/nfarina/homebridge-tesla](homebridge-tesla).
+Jaguar Land Rover InControl plug in for [Homebridge](https://homebridge.io/).
 
 Example config.json:
 
@@ -16,7 +14,8 @@ Example config.json:
           "password": "foobar",
           "pin": 1234,
           "deviceId": "UUID",
-          "lowBatteryThreshold": 25
+          "lowBatteryThreshold": 25,
+          "targetTemperature": 21
         }
       ]
     }
@@ -24,6 +23,8 @@ Example config.json:
 - `deviceId` needs to be a unique device identifier to identify your Homebridge.
 - `lowBatteryThresold` defines the battery level below which the battery is considered to be low.
   Defaults to 25% if the value is not specified.
+- `targetTemperature` define the default target temperature (in &#8451;) when preconditioning the vehicle.
+  Defaults to 21&#8451; if the value is not specified
 
 Exposes:
 
@@ -54,7 +55,9 @@ distinguished by their unique VIN numbers:
           "username": "foo@bar.uk",
           "password": "foobar",
           "pin": 1234,
-          "deviceId": "951208e8-a75d-4009-9faf-0039f728f82e"
+          "deviceId": "951208e8-a75d-4009-9faf-0039f728f82e",
+          "lowBatteryThreshold": 30,
+          "targetTemperature": 21
         },
         {
           "accessory": "Jaguar Land Rover InControl",
@@ -63,7 +66,8 @@ distinguished by their unique VIN numbers:
           "username": "foo@bar.uk",
           "password": "foobar",
           "pin": 1234,
-          "deviceId": "69df52b-0c86-49eb-b115-de789fd4400d"
+          "deviceId": "69df52b-0c86-49eb-b115-de789fd4400d",
+          "targetTemperature": 18
         }
       ]
     }

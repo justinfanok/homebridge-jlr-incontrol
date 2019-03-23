@@ -17,12 +17,16 @@ export default function(homebridge: any) {
 }
 
 class JaguarLandRoverAccessory {
+  private minimumTemperature = 15.5;
+  private maximumTemperature = 28.5;
   // From config.
   log: Function;
   name: string;
   vin: string;
   waitMinutes: number;
   lowBatteryThreshold: number;
+  targetTemperature: number;
+  coolingThresholdTemperature: number;
 
   // InControl API interface.
   incontrol: InControlService;
@@ -38,6 +42,9 @@ class JaguarLandRoverAccessory {
     this.vin = config["vin"];
     this.waitMinutes = config["waitMinutes"] || 1; // default to one minute.
     this.lowBatteryThreshold = config["lowBatteryThreshold"] || 25;
+    this.targetTemperature = config["targetTemperature"] || 21;
+    this.coolingThresholdTemperature =
+      config["coolingThresholdTemperature"] || 20;
     this.incontrol = new InControlService(
       log,
       config["username"],
@@ -68,11 +75,34 @@ class JaguarLandRoverAccessory {
       .on("get", callbackify(this.getLockTargetState))
       .on("set", callbackify(this.setLockTargetState));
     this.lockService = lockService;
+
+    const preconditioningService = new Service.Thermostat(
+      `${this.name} Preconditioning`,
+      "vehicle",
+    );
+    preconditioningService
+      .getCharacteristic(Characteristic.CurrentHeatingCoolingState)
+      .on("get", callbackify(this.getCurrentHeatingCoolingState));
+    preconditioningService
+      .getCharacteristic(Characteristic.TargetHeatingCoolingState)
+      .on("get", callbackify(this.getTargetHeatingCoolingState))
+      .on("set", callbackify(this.setTargetHeatingCoolingState));
+    preconditioningService
+      .getCharacteristic(Characteristic.CurrentTemperature)
+      .on("get", callbackify(this.getCurrentTemperature));
+    preconditioningService
+      .getCharacteristic(Characteristic.TargetTemperature)
+      .on("get", callbackify(this.getTargetTemperature))
+      .on("set", callbackify(this.setTargetTemperature));
+    preconditioningService
+      .getCharacteristic(Characteristic.TemperatureDisplayUnits)
+      .on("get", callbackify(this.getTemperatureDisplayUnits));
+    this.preconditioningService = preconditioningService;
   }
 
   getServices() {
-    const { batteryService, lockService } = this;
-    return [batteryService, lockService];
+    const { batteryService, lockService, preconditioningService } = this;
+    return [batteryService, lockService, preconditioningService];
   }
 
   //
@@ -109,22 +139,13 @@ class JaguarLandRoverAccessory {
     const vehicleStatus = await this.incontrol.getVehicleStatus();
     const lockedState = vehicleStatus.DOOR_IS_ALL_DOORS_LOCKED;
 
-    this.log("Locked state", lockedState);
-
     return lockedState === "TRUE"
       ? Characteristic.LockCurrentState.SECURED
       : Characteristic.LockCurrentState.UNSECURED;
   };
 
   getLockTargetState = async () => {
-    const vehicleStatus = await this.incontrol.getVehicleStatus();
-    const lockedState = vehicleStatus.DOOR_IS_ALL_DOORS_LOCKED;
-
-    this.log("Locked state", lockedState);
-
-    return lockedState === "TRUE"
-      ? Characteristic.LockCurrentState.SECURED
-      : Characteristic.LockCurrentState.UNSECURED;
+    return await this.getLockCurrentState();
   };
 
   setLockTargetState = async state => {
@@ -153,5 +174,83 @@ class JaguarLandRoverAccessory {
         Characteristic.LockCurrentState.UNSECURED,
       );
     }
+  };
+
+  //
+  // Preconditioning
+  //
+
+  getCurrentHeatingCoolingState = async () => {
+    const vehicleStatus = await this.incontrol.getVehicleStatus();
+    const climateStatus = vehicleStatus.CLIMATE_STATUS_OPERATING_STATUS;
+
+    const climateOnState =
+      this.targetTemperature < this.coolingThresholdTemperature
+        ? Characteristic.CurrentHeatingCoolingState.COOL
+        : Characteristic.CurrentHeatingCoolingState.HEAT;
+
+    return climateStatus === "HEATING"
+      ? climateOnState
+      : Characteristic.CurrentHeatingCoolingState.OFF;
+  };
+
+  getTargetHeatingCoolingState = async () => {
+    return await this.getCurrentHeatingCoolingState();
+  };
+
+  setTargetHeatingCoolingState = async state => {
+    this.log("Set heating cooling state to", state);
+
+    if (state === Characteristic.CurrentHeatingCoolingState.OFF) {
+      await this.incontrol.stopPreconditioning();
+    } else {
+      await this.incontrol.startPreconditioning(this.targetTemperature);
+    }
+
+    // We succeeded, so update the "current" state as well.
+    // We need to update the current state "later" because Siri can't
+    // handle receiving the change event inside the same "set target state"
+    // response.
+    await wait(1);
+
+    return state;
+  };
+
+  getCurrentTemperature = async () => {
+    return this.targetTemperature;
+  };
+
+  getTargetTemperature = async () => {
+    return this.targetTemperature;
+  };
+
+  setTargetTemperature = async state => {
+    const { minimumTemperature, maximumTemperature } = this;
+
+    if (state < minimumTemperature) state = minimumTemperature;
+    else if (state > maximumTemperature) state = maximumTemperature;
+
+    this.targetTemperature = state;
+
+    // if we're currently preconditioning, then send the update to the car
+    if (
+      (await this.getCurrentHeatingCoolingState()) !==
+      Characteristic.CurrentHeatingCoolingState.OFF
+    )
+      await this.setTargetHeatingCoolingState(
+        Characteristic.TargetHeatingCoolingState.AUTO,
+      );
+
+    // We succeeded, so update the "current" state as well.
+    // We need to update the current state "later" because Siri can't
+    // handle receiving the change event inside the same "set target state"
+    // response.
+    await wait(1);
+
+    return Characteristic.TargetHeatingCoolingState.AUTO;
+  };
+
+  getTemperatureDisplayUnits = async () => {
+    return Characteristic.TemperatureDisplayUnits.CELSIUS;
   };
 }
