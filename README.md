@@ -1,8 +1,6 @@
 # homebridge-jlr-incontrol
 
-Jaguar Land Rover InControl plug in for Homebridge.
-
-> Based on [https://github.com/nfarina/homebridge-tesla](homebridge-tesla).
+Jaguar Land Rover InControl plug in for [Homebridge](https://homebridge.io/).
 
 Example config.json:
 
