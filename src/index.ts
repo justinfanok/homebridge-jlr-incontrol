@@ -4,6 +4,8 @@ import { HomeKitService } from "./services/base";
 import { HomeKitBatteryService } from "./services/battery";
 import { HomeKitLockService } from "./services/lock";
 import { HomeKitPreconditioningService } from "./services/preconditioning";
+import { HomeKitChargerService } from "./services/charger";
+import { HomeKitInformationService } from "./services/info";
 
 let Service: any, Characteristic: any;
 
@@ -33,6 +35,13 @@ class JaguarLandRoverAccessory {
     );
 
     this.homeKitServices = [
+      new HomeKitInformationService(
+        name,
+        log,
+        incontrol,
+        Service,
+        Characteristic,
+      ),
       new HomeKitBatteryService(
         name,
         config["lowBatteryThreshold"],
@@ -51,6 +60,7 @@ class JaguarLandRoverAccessory {
         Service,
         Characteristic,
       ),
+      new HomeKitChargerService(name, log, incontrol, Service, Characteristic),
     ];
   }
 

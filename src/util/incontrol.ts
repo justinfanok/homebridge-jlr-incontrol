@@ -1,4 +1,8 @@
-import { VehicleStatusResponse, VehicleStatus } from "./types";
+import {
+  VehicleStatusResponse,
+  VehicleStatus,
+  VehicleAttributes,
+} from "./types";
 import { lock } from "./mutex";
 
 const rpn = require("request-promise-native");
@@ -82,9 +86,18 @@ export class InControlService {
   };
 
   private invalidateSessionIfExpired = (): void => {
-    if (this.auth && this.auth.validUntil < new Date()) {
-      this.log("Current session expired", this.auth.validUntil.toUTCString());
-      this.auth = undefined;
+    if (this.auth) {
+      this.log(
+        "Current session valid until",
+        this.auth.validUntil.toUTCString(),
+      );
+
+      if (this.auth.validUntil < new Date()) {
+        this.log("Current session expired");
+        this.auth = undefined;
+      }
+    } else {
+      this.log("No existing session");
     }
   };
 
@@ -113,12 +126,12 @@ export class InControlService {
   };
 
   private authenticate = async (): Promise<Authentication> => {
-    const { username, password, auth, deviceId } = this;
+    const { username, password, auth, deviceId, log } = this;
 
     // Return cached value if we have one.
     if (auth) return auth;
 
-    this.log("Authenticating with InControl API using credentials");
+    log("Authenticating with InControl API using credentials");
 
     const headers = {
       "Content-Type": "application/json",
@@ -146,10 +159,12 @@ export class InControlService {
       token_type,
     } = result;
 
-    this.log("Got an authentication token.");
+    log("Got an authentication token.");
 
     const validUntil = new Date();
-    validUntil.setSeconds(validUntil.getSeconds() + expires_in);
+    validUntil.setSeconds(validUntil.getUTCSeconds() + Number(expires_in));
+
+    log("Authentication token valid until", validUntil.toUTCString());
 
     return {
       accessToken: access_token,
@@ -282,11 +297,13 @@ export class InControlService {
     );
   };
 
-  private startStopPreconditioning = async (
+  private sendVehicleCommand = async (
+    service: string,
+    tokenType: string,
     serviceParameters: any[],
   ): Promise<any> => {
     const pin = this.getLastFourOfVin();
-    const token = await this.getCommandToken("ECC", pin);
+    const token = await this.getCommandToken(tokenType, pin);
     const { vin, deviceId, auth } = this;
 
     const headers = {
@@ -303,7 +320,7 @@ export class InControlService {
 
     await this.sendRequest(
       "POST",
-      `https://jlp-ifoa.wirelesscar.net/if9/jlr/vehicles/${vin}/preconditioning`,
+      `https://jlp-ifoa.wirelesscar.net/if9/jlr/vehicles/${vin}/${service}`,
       headers,
       json,
     );
@@ -334,7 +351,7 @@ export class InControlService {
     );
   };
 
-  getVehicleAttributes = async () => {
+  getVehicleAttributes = async (): Promise<VehicleAttributes> => {
     return await this.getVehicleInformation("attributes");
   };
 
@@ -343,7 +360,7 @@ export class InControlService {
       "status",
     );
 
-    var vehicleStatus: VehicleStatus = {};
+    let vehicleStatus: VehicleStatus = {};
 
     response.vehicleStatus.map(kvp => (vehicleStatus[kvp.key] = kvp.value));
 
@@ -363,13 +380,27 @@ export class InControlService {
       { key: "PRECONDITIONING", value: "START" },
       { key: "TARGET_TEMPERATURE_CELSIUS", value: targetTemperature * 10 },
     ];
-    return this.startStopPreconditioning(serviceParameters);
+    return this.sendVehicleCommand("preconditioning", "ECC", serviceParameters);
   };
 
   stopPreconditioning = async () => {
     const serviceParameters: any[] = [
       { key: "PRECONDITIONING", value: "STOP" },
     ];
-    return this.startStopPreconditioning(serviceParameters);
+    return this.sendVehicleCommand("preconditioning", "ECC", serviceParameters);
+  };
+
+  startCharging = async () => {
+    const serviceParameters: any[] = [
+      { key: "CHARGE_NOW_SETTING", value: "FORCE_ON" },
+    ];
+    return this.sendVehicleCommand("chargeProfile", "CP", serviceParameters);
+  };
+
+  stopCharging = async () => {
+    const serviceParameters: any[] = [
+      { key: "CHARGE_NOW_SETTING", value: "FORCE_OFF" },
+    ];
+    return this.sendVehicleCommand("chargeProfile", "CP", serviceParameters);
   };
 }
