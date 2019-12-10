@@ -389,18 +389,4 @@ export class InControlService {
     ];
     return this.sendVehicleCommand("preconditioning", "ECC", serviceParameters);
   };
-
-  startCharging = async () => {
-    const serviceParameters: any[] = [
-      { key: "CHARGE_NOW_SETTING", value: "FORCE_ON" },
-    ];
-    return this.sendVehicleCommand("chargeProfile", "CP", serviceParameters);
-  };
-
-  stopCharging = async () => {
-    const serviceParameters: any[] = [
-      { key: "CHARGE_NOW_SETTING", value: "FORCE_OFF" },
-    ];
-    return this.sendVehicleCommand("chargeProfile", "CP", serviceParameters);
-  };
 }
