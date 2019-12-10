@@ -8,8 +8,6 @@ type KeyValuePair = {
 };
 
 export interface VehicleStatus {
-  BATTERY_STATUS: string;
-  BATTERY_VOLTAGE: number;
   BRAKE_FLUID_WARN: string;
   BRAZIL_EVENT_MODE: string;
   CLIMATE_STATUS_FFH_REMAINING_RUNTIME: number;
