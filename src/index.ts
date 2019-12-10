@@ -1,10 +1,8 @@
 require("@babel/polyfill");
 import { InControlService } from "./util/incontrol";
 import { HomeKitService } from "./services/base";
-import { HomeKitBatteryService } from "./services/battery";
 import { HomeKitLockService } from "./services/lock";
 import { HomeKitPreconditioningService } from "./services/preconditioning";
-import { HomeKitChargerService } from "./services/charger";
 import { HomeKitInformationService } from "./services/info";
 
 let Service: any, Characteristic: any;
@@ -42,14 +40,6 @@ class JaguarLandRoverAccessory {
         Service,
         Characteristic,
       ),
-      new HomeKitBatteryService(
-        name,
-        config["lowBatteryThreshold"],
-        log,
-        incontrol,
-        Service,
-        Characteristic,
-      ),
       new HomeKitLockService(name, log, incontrol, Service, Characteristic),
       new HomeKitPreconditioningService(
         name,
@@ -60,7 +50,6 @@ class JaguarLandRoverAccessory {
         Service,
         Characteristic,
       ),
-      new HomeKitChargerService(name, log, incontrol, Service, Characteristic),
     ];
   }
 
